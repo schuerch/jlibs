@@ -29,7 +29,6 @@ import jlibs.core.lang.ImpossibleException;
 import jlibs.core.lang.OS;
 import jlibs.core.net.URLUtil;
 import jlibs.core.util.CollectionUtil;
-import jlibs.core.util.RandomUtil;
 import jlibs.xml.Namespaces;
 import jlibs.xml.XMLUtil;
 import jlibs.xml.sax.XMLDocument;
@@ -68,10 +67,11 @@ public class XSInstance{
 
     // TRUE=always, FALSE=never, null=when_appropriate
     public Boolean showContentModel = null;
+    public ValueGenerator valueGenerator = new RandomValueGenerator();
 
     private int generateRepeatCount(int minOccurs, int maxOccurs){
         if(minOccurs==0 && maxOccurs==1) //optional case
-            return RandomUtil.randomBoolean(generateOptionalElements) ? 1 : 0;
+            return valueGenerator.value(generateOptionalElements) ? 1 : 0;
 
         if(maxOccurs==-1)
             maxOccurs = Math.max(minOccurs, maximumElementsGenerated);
@@ -86,7 +86,7 @@ public class XSInstance{
         }
         return (min == max)
                 ? min
-                : RandomUtil.random(min, max);
+                : valueGenerator.value(min, max);
     }
 
     public void generate(XSModel xsModel, QName rootElement, XMLDocument doc){
@@ -177,7 +177,7 @@ public class XSInstance{
                 XSObjectList substitutionGroup = xsModel.getSubstitutionGroup(elem);
                 if(substitutionGroup.getLength()==0)
                     return EmptySequence.getInstance();
-                int rand = RandomUtil.random(0, substitutionGroup.getLength() - 1);
+                int rand = valueGenerator.value(0, substitutionGroup.getLength() - 1);
                 return new DuplicateSequence(substitutionGroup.item(rand));
             }
             if(elem.getTypeDefinition() instanceof XSComplexTypeDefinition){
@@ -186,7 +186,7 @@ public class XSInstance{
                     List<XSComplexTypeDefinition> subTypes = XSUtil.getSubTypes(xsModel, complexType);
                     if(subTypes.isEmpty())
                         return EmptySequence.getInstance();
-                    int rand = RandomUtil.random(0, subTypes.size() - 1);
+                    int rand = valueGenerator.value(0, subTypes.size() - 1);
                     return new DuplicateSequence<XSTypeDefinition>(subTypes.get(rand));
                 }
             }
@@ -335,7 +335,7 @@ public class XSInstance{
                             doc.addText(elem.getValueConstraintValue().getNormalizedValue());
                             break;
                         case XSConstants.VC_DEFAULT:
-                            if(RandomUtil.randomBoolean(generateDefaultElementValues)){
+                            if(valueGenerator.value(generateDefaultElementValues)){
                                 doc.addText(elem.getValueConstraintValue().getNormalizedValue());
                                 break;
                             }
@@ -351,7 +351,7 @@ public class XSInstance{
                             if(simpleType!=null){
                                 String sampleValue = null;
                                 if(sampleValueGenerator!=null)
-                                    sampleValue = sampleValueGenerator.generateSampleValue(elem, simpleType);
+                                    sampleValue = sampleValueGenerator.generateSampleValue(elem, simpleType, path);
                                 if(sampleValue==null)
                                     sampleValue = generateSampleValue(simpleType, elem.getName());
                                 doc.addText(sampleValue);
@@ -373,17 +373,17 @@ public class XSInstance{
                     String sampleValue = null;
                     switch(attr.getConstraintType()){
                         case XSConstants.VC_FIXED:
-                            if(RandomUtil.randomBoolean(generateFixedAttributes))
+                            if(valueGenerator.value(generateFixedAttributes))
                                 sampleValue = attr.getValueConstraintValue().getNormalizedValue();
                             break;
                         case XSConstants.VC_DEFAULT:
-                            if(RandomUtil.randomBoolean(generateDefaultAttributes))
+                            if(valueGenerator.value(generateDefaultAttributes))
                                 sampleValue = attr.getValueConstraintValue().getNormalizedValue();
                             break;
                         default:
-                            if(attr.getRequired() || RandomUtil.randomBoolean(generateOptionalAttributes)){
+                            if(attr.getRequired() || valueGenerator.value(generateOptionalAttributes)){
                                 if(sampleValueGenerator!=null)
-                                    sampleValue = sampleValueGenerator.generateSampleValue(decl, decl.getTypeDefinition());
+                                    sampleValue = sampleValueGenerator.generateSampleValue(decl, decl.getTypeDefinition(), path);
                                 if(sampleValue==null)
                                     sampleValue = generateSampleValue(decl.getTypeDefinition(), decl.getName());
                             }
@@ -431,7 +431,7 @@ public class XSInstance{
                             break;
                         case XSWildcard.NSCONSTRAINT_LIST:
                             StringList list = wildcard.getNsConstraintList();
-                            int rand = RandomUtil.random(0, list.getLength()-1);
+                            int rand = valueGenerator.value(0, list.getLength()-1);
                             uri = list.item(rand);
                             if(uri==null)
                                 uri = ""; // <xs:any namespace="##local"/> returns nsConstraintList with null
@@ -524,7 +524,7 @@ public class XSInstance{
                     }
                     len = (min == max)
                             ? min
-                            : RandomUtil.random(min, max);
+                            : valueGenerator.value(min, max);
                 }
 
                 List<String> enums = XSUtil.getEnumeratedValues(itemType);
@@ -551,13 +551,13 @@ public class XSInstance{
                 }
             }else if(simpleType.getMemberTypes().getLength()>0){
                 XSObjectList members = simpleType.getMemberTypes();
-                int rand = RandomUtil.random(0, members.getLength()-1);
+                int rand = valueGenerator.value(0, members.getLength()-1);
                 return generateSampleValue((XSSimpleTypeDefinition)members.item(rand), hint);
             }
 
             List<String> enums = XSUtil.getEnumeratedValues(simpleType);
             if(!enums.isEmpty())
-                return enums.get(RandomUtil.random(0, enums.size()-1));
+                return enums.get(valueGenerator.value(0, enums.size()-1));
 
             XSSimpleTypeDefinition builtInType = simpleType;
             while(!Namespaces.URI_XSD.equals(builtInType.getNamespace()))
@@ -566,7 +566,7 @@ public class XSInstance{
 
             String name = builtInType.getName().toLowerCase();
             if("boolean".equals(name))
-                return RandomUtil.randomBoolean() ? "true" : "false";
+                return valueGenerator.value(Boolean.class) ? "true" : "false";
 
             if("double".equals(name)
                     || "decimal".equals(name)
@@ -576,7 +576,7 @@ public class XSInstance{
                     || name.endsWith("long")
                     || name.endsWith("short")
                     || name.endsWith("byte"))
-                return randomNumber(simpleType, name);
+                return new Range(simpleType, name).randomNumber();
 
             if("date".equals(name))
                 return new SimpleDateFormat(XSD_DATE_FORMAT).format(new Date());
@@ -641,39 +641,50 @@ public class XSInstance{
             return null;
         }
 
-        private String randomNumber(XSSimpleTypeDefinition simpleType, String builtinName){
-            boolean exponentAllowed = "double".equals(builtinName) || "float".equals(builtinName);
+        class Range {
+          boolean exponentAllowed;
+          String minInclusive;
+          String minExclusive;
+          String maxInclusive;
+          String maxExclusive;
+          int totalDigits = -1;
+          int fractionDigits = -1;
 
-            String minInclusive = null;
+          Range(XSSimpleTypeDefinition simpleType, String builtinName) {
+            exponentAllowed = "double".equals(builtinName) || "float".equals(builtinName);
+
+            minInclusive = null;
             XSFacet facet = getFacet(simpleType, XSSimpleTypeDefinition.FACET_MININCLUSIVE);
             if(facet!=null)
                 minInclusive = facet.getLexicalFacetValue();
 
-            String minExclusive = null;
+            minExclusive = null;
             facet = getFacet(simpleType, XSSimpleTypeDefinition.FACET_MINEXCLUSIVE);
             if(facet!=null)
                 minExclusive = facet.getLexicalFacetValue();
 
-            String maxInclusive = null;
+            maxInclusive = null;
             facet = getFacet(simpleType, XSSimpleTypeDefinition.FACET_MAXINCLUSIVE);
             if(facet!=null)
                 maxInclusive = facet.getLexicalFacetValue();
 
-            String maxExclusive = null;
+            maxExclusive = null;
             facet = getFacet(simpleType, XSSimpleTypeDefinition.FACET_MAXEXCLUSIVE);
             if(facet!=null)
                 maxExclusive = facet.getLexicalFacetValue();
 
-            int totalDigits = -1;
+            totalDigits = -1;
             facet = getFacet(simpleType, XSSimpleTypeDefinition.FACET_TOTALDIGITS);
             if(facet!=null)
                 totalDigits = Integer.parseInt(facet.getLexicalFacetValue());
 
-            int fractionDigits = -1;
+            fractionDigits = -1;
             facet = getFacet(simpleType, XSSimpleTypeDefinition.FACET_FRACTIONDIGITS);
             if(facet!=null)
                 fractionDigits = Integer.parseInt(facet.getLexicalFacetValue());
+          }
 
+          public String randomNumber() {
             Object randomNumber;
             if(fractionDigits==0){
                 // NOTE: min/max facets can have fractional part even though fractionDigits is zero
@@ -697,7 +708,7 @@ public class XSInstance{
                 else if(max==null)
                     max = Math.min(Long.MAX_VALUE, min+1000);
 
-                randomNumber = RandomUtil.random(min, max);
+                randomNumber = valueGenerator.value(min, max);
             }else{
                 Double min = null;
                 if(minInclusive!=null)
@@ -719,7 +730,7 @@ public class XSInstance{
                 else if(max==null)
                     max = Math.min(Double.MAX_VALUE, min+1000);
 
-                randomNumber = RandomUtil.random(min, max);
+                randomNumber = valueGenerator.value(min, max);
             }
 
             String str;
@@ -755,9 +766,9 @@ public class XSInstance{
             if(fraction.length()>0)
                 str += '.' + fraction;
             return str;
+          }
         }
     }
-
     public void loadOptions(Properties options){
         String value = options.getProperty("minimumElementsGenerated");
         if(value!=null)
@@ -801,8 +812,8 @@ public class XSInstance{
     public SampleValueGenerator sampleValueGenerator;
 
     public static interface SampleValueGenerator{
-        public String generateSampleValue(XSElementDeclaration element, XSSimpleTypeDefinition simpleType);
-        public String generateSampleValue(XSAttributeDeclaration attribute, XSSimpleTypeDefinition simpleType);
+        public String generateSampleValue(XSElementDeclaration element, XSSimpleTypeDefinition simpleType, Path path);
+        public String generateSampleValue(XSAttributeDeclaration attribute, XSSimpleTypeDefinition simpleType, Path path);
     }
 
     public static void main(String[] args) throws Exception{

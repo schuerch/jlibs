@@ -16,6 +16,7 @@
 
 package jlibs.xml.xsd;
 
+import jlibs.core.graph.Path;
 import jlibs.core.util.RandomUtil;
 import jlibs.xml.sax.SAXUtil;
 import org.apache.xerces.xs.*;
@@ -101,13 +102,13 @@ public class XMLSampleValueGenerator implements XSInstance.SampleValueGenerator{
     }
 
     @Override
-    public String generateSampleValue(XSElementDeclaration element, XSSimpleTypeDefinition simpleType){
+    public String generateSampleValue(XSElementDeclaration element, XSSimpleTypeDefinition simpleType, Path path){
         List<String> values = elementValues.get(element);
         return values==null ? null : values.get(RandomUtil.random(0, values.size()-1));
     }
 
     @Override
-    public String generateSampleValue(XSAttributeDeclaration attribute, XSSimpleTypeDefinition simpleType){
+    public String generateSampleValue(XSAttributeDeclaration attribute, XSSimpleTypeDefinition simpleType, Path path){
         List<String> values = attributeValues.get(attribute);
         return values==null ? null : values.get(RandomUtil.random(0, values.size()-1));
     }
